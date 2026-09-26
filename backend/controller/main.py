@@ -1,13 +1,51 @@
-from typing import List
+import hashlib
+import json
+import uuid
+from pathlib import Path
 
 import httpx
-
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI(title="Vault Controller")
 
+
+# --------------------------------------------------
+# METADATA CONFIGURATION
+# --------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+METADATA_FILE = BASE_DIR / "data" / "metadata.json"
+
+METADATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+
+def load_metadata():
+    if not METADATA_FILE.exists():
+        return {}
+
+    with open(METADATA_FILE, "r") as file:
+        return json.load(file)
+
+
+def save_metadata(metadata):
+    with open(METADATA_FILE, "w") as file:
+        json.dump(
+            metadata,
+            file,
+            indent=2
+        )
+
+
+def calculate_checksum(data: bytes):
+    return hashlib.sha256(data).hexdigest()
+
+
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,7 +95,6 @@ NODES = [
 
 @app.get("/")
 def controller_info():
-
     return {
         "service": "Vault Controller",
         "status": "running",
@@ -66,7 +103,7 @@ def controller_info():
 
 
 # --------------------------------------------------
-# GET NODES
+# GET NODE STATUS
 # --------------------------------------------------
 
 @app.get("/nodes")
@@ -122,6 +159,8 @@ async def upload_object(
     durability: str = Form("high")
 ):
 
+    # Validate replication factor
+
     if replication_factor < 1 or replication_factor > len(NODES):
 
         raise HTTPException(
@@ -130,7 +169,9 @@ async def upload_object(
         )
 
 
-    # Find healthy nodes
+    # --------------------------------------------------
+    # FIND HEALTHY NODES
+    # --------------------------------------------------
 
     healthy_nodes = []
 
@@ -146,13 +187,17 @@ async def upload_object(
                 )
 
                 if response.status_code == 200:
+
                     healthy_nodes.append(node)
 
             except Exception:
+
                 pass
 
 
-    # Check whether enough nodes are available
+    # --------------------------------------------------
+    # CHECK NODE AVAILABILITY
+    # --------------------------------------------------
 
     if len(healthy_nodes) < replication_factor:
 
@@ -166,20 +211,29 @@ async def upload_object(
         )
 
 
-    # Select nodes
+    # --------------------------------------------------
+    # SELECT NODES
+    # --------------------------------------------------
 
     selected_nodes = healthy_nodes[:replication_factor]
 
 
-    # Read uploaded file
+    # --------------------------------------------------
+    # READ FILE
+    # --------------------------------------------------
 
     file_data = await file.read()
 
+    object_id = f"obj_{uuid.uuid4().hex[:8]}"
+
+    checksum = calculate_checksum(file_data)
+
+
+    # --------------------------------------------------
+    # STORE REPLICAS
+    # --------------------------------------------------
 
     replicas = []
-
-
-    # Send file to selected nodes
 
     async with httpx.AsyncClient() as client:
 
@@ -223,6 +277,10 @@ async def upload_object(
                 })
 
 
+    # --------------------------------------------------
+    # SUCCESSFUL REPLICAS
+    # --------------------------------------------------
+
     successful_replicas = [
         replica
         for replica in replicas
@@ -230,11 +288,113 @@ async def upload_object(
     ]
 
 
-    return {
-        "message": "Object stored",
-        "object": file.filename,
+    replica_nodes = [
+        replica["node_id"]
+        for replica in successful_replicas
+    ]
+
+
+    # --------------------------------------------------
+    # DETERMINE OBJECT STATUS
+    # --------------------------------------------------
+
+    if len(successful_replicas) == replication_factor:
+
+        object_status = "healthy"
+
+    elif len(successful_replicas) > 0:
+
+        object_status = "degraded"
+
+    else:
+
+        object_status = "failed"
+
+
+    # --------------------------------------------------
+    # SAVE METADATA
+    # --------------------------------------------------
+
+    metadata = load_metadata()
+
+
+    metadata[object_id] = {
+
+        "object_id": object_id,
+
+        "name": file.filename,
+
         "size": len(file_data),
+
+        "checksum": checksum,
+
         "replication_factor": replication_factor,
+
         "durability": durability,
-        "replicas": successful_replicas
+
+        "replicas": replica_nodes,
+
+        "status": object_status
     }
+
+
+    save_metadata(metadata)
+
+
+    # --------------------------------------------------
+    # RESPONSE
+    # --------------------------------------------------
+
+    return {
+
+        "message": "Object stored",
+
+        "object_id": object_id,
+
+        "object": file.filename,
+
+        "size": len(file_data),
+
+        "checksum": checksum,
+
+        "replication_factor": replication_factor,
+
+        "durability": durability,
+
+        "replicas": replica_nodes,
+
+        "status": object_status
+    }
+
+
+# --------------------------------------------------
+# GET ALL OBJECTS
+# --------------------------------------------------
+
+@app.get("/objects")
+def get_objects():
+
+    metadata = load_metadata()
+
+    return {
+        "objects": list(metadata.values())
+    }
+
+
+# --------------------------------------------------
+# GET OBJECT METADATA
+# --------------------------------------------------
+
+@app.get("/objects/{object_id}")
+def get_object(object_id: str):
+
+    metadata = load_metadata()
+
+    if object_id not in metadata:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Object not found"
+        )
+
+    return metadata[object_id]

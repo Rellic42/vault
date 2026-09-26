@@ -1,0 +1,16 @@
+{
+  "obj_90366f11": {
+    "object_id": "obj_90366f11",
+    "name": "metadata-test.txt",
+    "size": 20,
+    "checksum": "496dd7c8062f437a167a017febf33c9f8009ab50c8233ae5f928a6c58df54d5a",
+    "replication_factor": 3,
+    "durability": "high",
+    "replicas": [
+      "node-01",
+      "node-03",
+      "node-04"
+    ],
+    "status": "healthy"
+  }
+}
