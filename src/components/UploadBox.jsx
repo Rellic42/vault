@@ -32,6 +32,7 @@ export default function UploadBox({ file, onFileSelect }) {
       onFileSelect({
         name: droppedFile.name,
         size: formatBytes(droppedFile.size),
+        rawFile: droppedFile,
       });
     }
   };
@@ -42,6 +43,7 @@ export default function UploadBox({ file, onFileSelect }) {
       onFileSelect({
         name: selectedFile.name,
         size: formatBytes(selectedFile.size),
+        rawFile: selectedFile,
       });
     }
   };

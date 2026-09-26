@@ -1,6 +1,5 @@
 import { INITIAL_NODES } from '../data/nodeMockData';
 
-// Initial objects state for Step 3
 export const INITIAL_OBJECTS = [
   {
     id: 'obj_001',
@@ -13,8 +12,8 @@ export const INITIAL_OBJECTS = [
     targetReplication: '3x',
     durability: 'High',
     replicas: ['node-01', 'node-03', 'node-05'],
-    integrity: 'Verified', // 'Verified' | 'Checking' | 'Mismatch' | 'Repairing'
-    status: 'Healthy', // 'Healthy' | 'Repairing' | 'Degraded'
+    integrity: 'Verified',
+    status: 'Healthy',
     lastModified: '2026-09-25 14:22:10',
   },
   {
@@ -52,7 +51,7 @@ export const INITIAL_OBJECTS = [
 export const INITIAL_ACTIVITIES = [
   {
     id: 'act-1',
-    type: 'success', // 'success' | 'warning' | 'processing' | 'failure'
+    type: 'success',
     icon: '✓',
     time: '02:31:12',
     title: 'Object uploaded',
@@ -79,54 +78,202 @@ export const INITIAL_ACTIVITIES = [
   },
 ];
 
-// Backend-ready API methods
+const CONTROLLER_URL = 'http://localhost:8000';
+
+export const NODE_URLS = {
+  'node-01': 'http://localhost:8001',
+  'node-02': 'http://localhost:8002',
+  'node-03': 'http://localhost:8003',
+  'node-04': 'http://localhost:8004',
+  'node-05': 'http://localhost:8005',
+};
+
+function formatBytes(bytes) {
+  if (!bytes && bytes !== 0) return '0 B';
+  if (typeof bytes === 'string') return bytes;
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function truncateChecksum(sha) {
+  if (!sha) return '8f23...91ac';
+  if (sha.length <= 12) return sha;
+  return `${sha.slice(0, 4)}...${sha.slice(-4)}`;
+}
+
 export const api = {
+  // Check if controller is alive
+  async isBackendLive() {
+    try {
+      const res = await fetch(`${CONTROLLER_URL}/`, { signal: AbortSignal.timeout(1500) });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  // Fetch node states from controller
   async getNodes() {
-    return { ...INITIAL_NODES };
+    try {
+      const res = await fetch(`${CONTROLLER_URL}/nodes`, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) throw new Error('Controller offline');
+      const data = await res.json();
+      
+      const mapped = {};
+      data.nodes.forEach((n) => {
+        const uppercaseStatus = (n.status || 'healthy').toUpperCase();
+        mapped[n.id] = {
+          id: n.id,
+          name: n.id.replace('node-0', 'Node 0'),
+          host: 'localhost',
+          port: parseInt(n.address.split(':').pop(), 10) || 8001,
+          address: n.address.replace('http://', ''),
+          status: uppercaseStatus,
+          storage: '32.4 GB / 100 GB',
+          objectsCount: 4,
+          lastHeartbeat: n.last_heartbeat ? 'Just now' : '2 seconds ago',
+          objects: [],
+          events: [],
+        };
+      });
+      return mapped;
+    } catch (e) {
+      console.warn('Using fallback node state:', e.message);
+      return { ...INITIAL_NODES };
+    }
   },
 
+  // Fetch objects list from controller metadata
   async getObjects() {
-    return [...INITIAL_OBJECTS];
+    try {
+      const res = await fetch(`${CONTROLLER_URL}/objects`, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) throw new Error('Controller offline');
+      const data = await res.json();
+
+      return data.objects.map((obj) => ({
+        id: obj.object_id,
+        name: obj.name,
+        size: formatBytes(obj.size),
+        rawSize: obj.size,
+        version: 'v1',
+        checksum: truncateChecksum(obj.checksum),
+        fullChecksum: obj.checksum,
+        replicationFactor: obj.replication_factor,
+        targetReplication: `${obj.replication_factor}x`,
+        durability: obj.durability ? obj.durability.charAt(0).toUpperCase() + obj.durability.slice(1) : 'High',
+        replicas: obj.replicas || [],
+        integrity: (obj.corrupted_replicas && obj.corrupted_replicas.length > 0) ? 'Mismatch' : (obj.status === 'degraded' ? 'Repairing' : 'Verified'),
+        status: obj.status === 'healthy' ? 'Healthy' : (obj.status === 'degraded' ? 'Repairing' : 'Degraded'),
+        lastModified: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      }));
+    } catch (e) {
+      console.warn('Using fallback objects state:', e.message);
+      return null;
+    }
   },
 
-  async getObject(id) {
-    return INITIAL_OBJECTS.find((o) => o.id === id) || null;
-  },
-
-  async getMetadata(id) {
-    const obj = INITIAL_OBJECTS.find((o) => o.id === id);
-    if (!obj) return null;
-    return {
-      objectId: obj.id,
-      name: obj.name,
-      version: obj.version,
-      size: obj.size,
-      checksum: obj.checksum,
-      replicationFactor: obj.replicationFactor,
-      replicas: obj.replicas,
-      durability: obj.durability,
-      status: 'Consistent',
-      lastVerified: '2 seconds ago',
-    };
-  },
-
+  // Fetch activity log from controller
   async getActivity() {
-    return [...INITIAL_ACTIVITIES];
+    try {
+      const res = await fetch(`${CONTROLLER_URL}/activities`, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) throw new Error('Controller offline');
+      const data = await res.json();
+      return data.activities || [];
+    } catch {
+      return null;
+    }
   },
 
-  async getNodeStatus(nodeId) {
-    return INITIAL_NODES[nodeId]?.status || 'HEALTHY';
+  // Upload file to backend controller
+  async uploadObject(file, replicationFactor = 3, durability = 'high') {
+    const factorNum = parseInt(replicationFactor, 10) || 3;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('replication_factor', factorNum);
+    formData.append('durability', durability);
+
+    try {
+      const res = await fetch(`${CONTROLLER_URL}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      return await res.json();
+    } catch (e) {
+      console.warn('Backend upload fallback:', e.message);
+      return null;
+    }
   },
 
+  // Simulate Node Failure
   async simulateFailure(nodeId) {
-    return { success: true, nodeId, action: 'FAILED' };
+    const url = NODE_URLS[nodeId];
+    if (!url) return;
+    try {
+      await fetch(`${url}/simulate-failure`, { method: 'POST' });
+    } catch (e) {
+      console.warn('Failed to reach node endpoint:', e.message);
+    }
   },
 
-  async simulateCorruption(nodeId, objectId) {
-    return { success: true, nodeId, objectId, action: 'CORRUPTED' };
+  // Kill Node
+  async killNode(nodeId) {
+    const url = NODE_URLS[nodeId];
+    if (!url) return;
+    try {
+      await fetch(`${url}/kill`, { method: 'POST' });
+    } catch (e) {
+      console.warn('Failed to reach node endpoint:', e.message);
+    }
   },
 
+  // Corrupt Object on specific node
+  async corruptObject(nodeId, filename) {
+    const url = NODE_URLS[nodeId];
+    if (!url) return;
+    try {
+      await fetch(`${url}/objects/${filename}/corrupt`, { method: 'POST' });
+    } catch (e) {
+      console.warn('Failed to reach node corrupt endpoint:', e.message);
+    }
+  },
+
+  // Fetch stored objects for a specific node (from node server endpoint directly)
+  async getNodeObjects(nodeId) {
+    const url = NODE_URLS[nodeId];
+    if (!url) return null;
+    try {
+      const res = await fetch(`${url}/objects`, { signal: AbortSignal.timeout(1500) });
+      if (!res.ok) throw new Error('Node offline');
+      const data = await res.json();
+      return (data.objects || []).map((obj, index) => ({
+        id: `node_obj_${nodeId}_${index}_${obj.name}`,
+        name: obj.name,
+        size: formatBytes(obj.size),
+        rawSize: obj.size,
+        version: 'v1',
+        checksum: '8f23...91ac',
+        fullChecksum: '8f234cb19a2e37bc91ac54b810e9f283d719',
+        lastModified: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        status: 'Healthy',
+      }));
+    } catch (e) {
+      console.warn(`Could not fetch live objects for ${nodeId}:`, e.message);
+      return null;
+    }
+  },
+
+  // Restore Node
   async restoreNode(nodeId) {
-    return { success: true, nodeId, action: 'RESTORED' };
+    const url = NODE_URLS[nodeId];
+    if (!url) return;
+    try {
+      await fetch(`${url}/restore`, { method: 'POST' });
+    } catch (e) {
+      console.warn('Failed to reach node restore endpoint:', e.message);
+    }
   },
 };

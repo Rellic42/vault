@@ -7,10 +7,97 @@
     "replication_factor": 3,
     "durability": "high",
     "replicas": [
+      "node-03",
+      "node-04",
+      "node-02"
+    ],
+    "status": "degraded",
+    "available_replicas": [
+      "node-03",
+      "node-04",
+      "node-02"
+    ],
+    "unavailable_replicas": [
       "node-01",
       "node-03",
       "node-04"
     ],
-    "status": "degraded"
+    "verified_replicas": [
+      "node-03",
+      "node-04",
+      "node-02"
+    ]
+  },
+  "obj_18f55ab3": {
+    "object_id": "obj_18f55ab3",
+    "name": "Screenshot 2026-09-24 at 4.53.57\u202fPM.png",
+    "size": 197499,
+    "checksum": "830f40477145d267e049d2a5ae97d4a00614ae1b5b32f99d51ca1dfe91ea3d83",
+    "replication_factor": 3,
+    "durability": "high",
+    "replicas": [
+      "node-04",
+      "node-05",
+      "node-02"
+    ],
+    "status": "degraded",
+    "available_replicas": [
+      "node-04",
+      "node-05",
+      "node-02"
+    ],
+    "verified_replicas": [
+      "node-04",
+      "node-05",
+      "node-02"
+    ]
+  },
+  "obj_0ef91fbd": {
+    "object_id": "obj_0ef91fbd",
+    "name": "exp3_container_startup_behavior.md",
+    "size": 16373,
+    "checksum": "d41fff2b2303b1e2903e1830e3921d4421ae2f09f8ab3504c860b4819d5d8e74",
+    "replication_factor": 3,
+    "durability": "high",
+    "replicas": [
+      "node-02",
+      "node-03",
+      "node-04"
+    ],
+    "status": "degraded",
+    "available_replicas": [
+      "node-02",
+      "node-03",
+      "node-04"
+    ],
+    "verified_replicas": [
+      "node-02",
+      "node-03",
+      "node-04"
+    ]
+  },
+  "obj_8821557b": {
+    "object_id": "obj_8821557b",
+    "name": "INT331_Collaborative_Software_Development_GitHub_Issues_Forks_PRs_Revised.md",
+    "size": 29971,
+    "checksum": "64e328598500d21211f985b0b44f5d97a5a8af8042ac46410bab80def17368e2",
+    "replication_factor": 3,
+    "durability": "high",
+    "replicas": [
+      "node-02",
+      "node-03",
+      "node-04"
+    ],
+    "status": "degraded",
+    "available_replicas": [
+      "node-02",
+      "node-03",
+      "node-04"
+    ],
+    "verified_replicas": [
+      "node-02",
+      "node-03",
+      "node-04"
+    ]
   }
 }

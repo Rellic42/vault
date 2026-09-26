@@ -1,7 +1,7 @@
 import { useVault } from '../context/VaultContext';
 
 export default function ClusterStatus() {
-  const { clusterStatus, triggerNodeFailure, nodes } = useVault();
+  const { clusterStatus, triggerNodeFailure, nodes, isBackendConnected } = useVault();
 
   // Find a healthy node to fail for the quick demo button
   const healthyNodeId = Object.keys(nodes).find(
@@ -21,6 +21,12 @@ export default function ClusterStatus() {
           </span>
         </div>
         <span className="cluster-details">{clusterStatus.details}</span>
+
+        {isBackendConnected && (
+          <span className="backend-live-badge font-mono" title="Connected to Vault FastAPI Backend (localhost:8000)">
+            ● Backend Live
+          </span>
+        )}
       </div>
 
       {healthyNodeId && (
