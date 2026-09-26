@@ -11,6 +11,6 @@
       "node-03",
       "node-04"
     ],
-    "status": "healthy"
+    "status": "degraded"
   }
 }
